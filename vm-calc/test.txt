@@ -1,0 +1,4 @@
+let array = [[1, 7 - 1, 8], 5 + 8, 9, ];
+let boom ha = ha + 1;
+(array[0])[boom()(0)]:
+array[-1 * 0b1]:
