@@ -1,0 +1,9 @@
+[package]
+name = "issui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cursive = { version = "*", features = ["toml"] }
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"

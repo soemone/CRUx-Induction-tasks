@@ -1,0 +1,21 @@
+shadow = false  # Don't draw shadows around stacked views
+borders = "none"  # Alternatives are "none" and "outset"
+
+# Here we define the color palette.
+[colors]
+    background = "#000"
+    shadow     = "#fff"
+    view       = "#000"
+
+    primary   = "#ddd"
+    secondary = "#f5deb3"
+    tertiary  = "#CD7F32"
+
+    # Hex values can use lower or uppercase.
+    # (base color MUST be lowercase)
+    title_primary   = "#ff5555"
+    title_secondary = "#ffff55"
+
+    # Lower precision values can use only 3 digits.
+    highlight          = "#555"
+    highlight_inactive = "#000"
