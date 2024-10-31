@@ -1,7 +1,7 @@
 # CRUx Induction tasks
 ### The repository that contains the tasks that have been required for me to complete in order to join the CRUx Coding club.
 ## Implementation details:
-### VM-Calc
+### Task 1: VM-Calc
 - This is currently an extension of a project that I was previously working on: https://github.com/soemone/vm-calc
 - There have been many changes and this version could be considered an improvement over that implementation
 - Notable changes to VM-Calc:
@@ -11,3 +11,6 @@
     - Currently, the REPL has not been re-implemented. So no REPL functionality at this time
     - Reduced the number of errors the parser handles, allowing the VM to handle the rest. A degradation in performance, perhaps.
     - Deleting items has not been tested at all. I presume some new code may interfere with it. I hope it does not.
+
+### Task 2: issui
+- A basic TUI wrapper for the GitHub CLI, to view issues associated with user repositories

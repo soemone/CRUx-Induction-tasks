@@ -1,5 +1,5 @@
-### A simple "VM" based calculator thing
-#### Features:
+## A simple "VM" based calculator thing
+### Features:
 - Number systems: Decimal, Binary, Octal, Hexadecimal
     - Note that output is only in the decimal number system
 - Strings with basic escape sequences parsed
@@ -169,3 +169,7 @@ arr[0]: // <Array> [1, 2, 3, 4]
 Pretty simple, I'd say
 
 Some things are still buggy, and some syntax does not allow you to do what you'd expect, but this is pretty much it.
+
+### Dependencies:
+- serde, bincode: Used to convert instructions to and from bytecode
+- clap: Used to parse arguments
