@@ -15,7 +15,7 @@ mod tests;
 
 use std::{collections::HashMap, io::Write, time::Instant};
 
-use instruction::Instruction;
+use instruction::{Instruction, Value};
 use processchain::ProcessChain;
 
 use clap::Parser;
@@ -42,6 +42,14 @@ struct Args {
     /// Show instructions created from AST of parsed output
     #[arg(long="show-instructions", short = 'i')]
     showinstructions: Option<String>,
+
+    /// Run code from text
+    #[arg(long="text", short = 't')]
+    text: Option<String>,
+
+    /// Run the REPL
+    #[arg(long="repl", short = 'l')]
+    repl: bool,
 }
 
 fn main() -> Result<(), ()> {
@@ -101,7 +109,6 @@ fn run() -> Result<(), ()> {
             };
             ProcessChain::store_bytecode_from_file(&values[0], output)?;
     
-            // store(&value)?;
             return Ok(());
         },
 
@@ -127,35 +134,35 @@ fn run() -> Result<(), ()> {
         None => (),
     };
 
+    match args.text {
+        Some(value) => {
+            ProcessChain::run_from_text(&value)?;
+            return Ok(());
+        }
 
-    // let args: Vec<String> = std::env::args().collect();
-    // match args[1].as_str() {
-    //     "-rb" | "--run-binary" => ProcessChain::run_from_bytecode(&args[2])?,
-    //     "-wb" | "--write-binary" => store()?,
-    //     "-rf" | "--run-file" => ProcessChain::run_from_file(&args[2])?,
-    //     "-rfs" | "--run-store" | "--run-and-store-binary" => {
-    //         store()?;
-    //         ProcessChain::run_from_file(&args[2])?;
-    //     },
-    //     "-t" | "--text" => ProcessChain::run_from_text(&args[2])?,
-    //     "repl" => repl(),
-    //     arg => println!("Invalid argument `{}` provided.", arg)
-    // }
+        None => (),
+    }
+
+    if args.repl {
+        repl();
+    }
+
     Ok(())
 }
 
-/* fn repl() {
+
+// Known Issue: creating a function and referncing it, then deleting the original function before calling the referenced function 
+// will cause the program to crash due to the function code it references, not existing. A similar thing applies to partial functions
+fn repl() {
     // Introduction
     println!("Running repl...");
     println!("Type `.quit` | `.q` to exit the repl");
-    println!("Type `.show variables` | `.show var` to show the variables in the session");
+    println!("Type `.show symbols` | `.show sym` to show the symbols in the session");
     println!("Type `.time` | `.timer` to time the execution of the code");
     println!("Type `.load <filepath>` to load and execute code (timer does not apply to this)");
     println!("Type `.load bytecode <filepath>` | `.load b <filepath>` to load and execute bytecode (timer does not apply to this)");
 
     let mut symbols = HashMap::new();
-    let mut fn_symbols = HashMap::new();
-    let mut pfn_symbols = HashMap::new();
     let mut p_symbols = HashMap::new();
 
     let mut fn_bytecode = vec![];
@@ -205,39 +212,24 @@ fn run() -> Result<(), ()> {
                 None => println!("Expected file path to load file!"),
             };
             continue;
-        } else if [".show functions", ".show fns", ".disp fns", ".display functions"].contains(&buffer.as_str()) {
-            println!("Functions in this session: ");
+        } else if [".show symbols", ".show sym", ".disp sym", ".display symbols"].contains(&buffer.as_str()) {
+            println!("Symbols in this session: ");
+            for (key, value) in &symbols {
+                println!("{key} = {value}");
+            }
+            if p_symbols.is_empty() {
+                println!("None");
+            }
+            continue;
+        } else if [".show builtin", ".display builtin"].contains(&buffer.as_str()) {
             println!("BUILTIN FUNCTIONS: ");
             for (function, (args, _)) in functions::FUNCTIONS {
                 let repeated = "*, ".repeat(args);
                 println!("{function}({})", if args > 0 { &repeated[..(args * 3 - 2)] } else { "" });
             }
-            println!("USER FUNCTIONS: ");
-            for (key, (args, shadow)) in &pfn_symbols {
-                let repeated = "*, ".repeat(*args);
-                println!("{key}({}){}", 
-                                    if *args > 0 { &repeated[..(*args * 3 - 2)] } else { "" }, 
-                                    if *shadow { " [SHADOWED - UNREACHABLE]" } else { "" }
-                        );
-            }
-            if pfn_symbols.is_empty() {
-                println!("None");
-            }
             continue;
-        } else if [".show variables", ".show var", ".disp var", ".display variables"].contains(&buffer.as_str()) {
-            println!("Variables in this session: ");
-            for (key, value) in &symbols {
-                if let Some(true) = p_symbols.get(key) {
-                    println!("{key} = {value} [SHADOWED - UNREACHABLE]");
-                } else {
-                    println!("{key} = {value}");
-                }
-            }
-            if symbols.is_empty() {
-                println!("None");
-            }
-            continue;
-        } else if [".time", ".timer"].contains(&buffer.as_str()) {
+        }
+        else if [".time", ".timer"].contains(&buffer.as_str()) {
             time = !time;
             println!("The timer is now {}", if time { "on" } else { "off" });
             continue;
@@ -251,20 +243,35 @@ fn run() -> Result<(), ()> {
         // Crazy workaround things...
 
         let lexer = lexer::Lexer::new(source).expect("Failed to initialize the lexer!");
-        let parser = parser::Parser::new_fn_symbols(lexer, pfn_symbols, p_symbols);
+        let parser = parser::Parser::new_fn_symbols(lexer, p_symbols);
         let mut bytecode_gen = bytecode::Bytecode::new(parser);
         let (instructions, new_fn_bytecode) = bytecode_gen.generate_fn_bytecode(fn_bytecode.clone());
 
-        (pfn_symbols, p_symbols) = bytecode_gen.get_symbols();
+        p_symbols = bytecode_gen.get_symbols();
 
-        let mut i = 0;
-        while i < new_fn_bytecode.len() {
-            let instr = new_fn_bytecode[i].clone();
+        let delete_fn = |functions: &mut HashMap<&str, usize>, symbols: &mut HashMap<&str, Value>, fn_bytecode: &mut Vec<Instruction>, name: &str| {
+            if functions.contains_key(name) {
+                if symbols.contains_key(name) {
+                    symbols.remove(name);
+                }
+                // Delete function
+                let start = *functions.get(name).unwrap();
+                if let Some(Instruction::FunctionDecl { .. }) = &fn_bytecode.get(start) {
+                    let end = match fn_bytecode.get(start + 2) {
+                        Some(Instruction::UData { number }) => number,
+                        _ => panic!("Unknown error trying to run the repl!"),
+                    };
+                    fn_bytecode.drain(start..=(start + end + 2));
+                }
+                functions.remove(name);
+            }
+        };
+
+        for instr in new_fn_bytecode.clone() {
             match instr {
                 Instruction::FunctionDecl { name } => {
                     if !functions.contains_key(name) {
-                        fn_bytecode.push(instr);
-                        functions.insert(name, fn_bytecode.len() - 1);
+                        functions.insert(name, fn_bytecode.len());
                     } else {
                         // Delete old function to replace with new
                         let start = *functions.get(name).unwrap();
@@ -275,20 +282,34 @@ fn run() -> Result<(), ()> {
                             };
                             fn_bytecode.drain(start..=(start + end + 2));
                         }
-                        fn_bytecode.push(instr);
                     }
+                    fn_bytecode.push(instr);
                 }
 
                 Instruction::Output => (),
 
                 _ => { fn_bytecode.push(instr); }
             }
-            i += 1;
+        }
+
+        
+        for instr in &instructions {
+            match instr {
+                Instruction::Delete { name } => {
+                    delete_fn(&mut functions, &mut symbols, &mut fn_bytecode, name);
+                }
+
+                Instruction::ReloadSymbol { name } => {
+                    delete_fn(&mut functions, &mut symbols, &mut fn_bytecode, name);
+                }
+
+                _ => (),
+            }
         }
 
         if time { println!("Finished compilation in {:?}", instant.elapsed()); }
         
-        let mut vm = vm::VM::new_with_symbols(instructions, symbols, fn_symbols);
+        let mut vm = vm::VM::new_with_symbols(instructions, symbols);
         
         if time { println!("Begin run"); }
         let instant = Instant::now();
@@ -297,10 +318,9 @@ fn run() -> Result<(), ()> {
 
         vm.print_output();
 
-        (symbols, fn_symbols) = vm.get_symbols();
+        symbols = vm.get_symbols();
         
         if time { println!("Finished run in {:?}", instant.elapsed()); }
     }
     println!("Finished repl");
 }
-*/

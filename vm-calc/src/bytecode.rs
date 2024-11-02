@@ -106,7 +106,9 @@ impl<'a> Bytecode<'a> {
                                     }
                                 }
                             }
-                            function_bytecode.append(&mut (instructions.clone()));
+                            if let (Instruction::UData { .. }, Instruction::UData { number: end}) = (&instructions[1], &instructions[2]) {
+                                function_bytecode.append(&mut (instructions[0..=(0 + end + 2)]).to_vec());
+                            }
                         }
                         complete_bytecode.append(&mut instructions);
                     }
@@ -278,6 +280,17 @@ impl<'a> Bytecode<'a> {
                 instructions.extend(Self::traverse(to_index));
                 instructions.extend(Self::traverse(expression));
                 instructions.push(Instruction::Index);
+                instructions
+            }
+
+            AST::AssignIndex { identifier, value, indicies, operator } => {
+                let mut instructions = vec![];
+                for index in indicies {
+                    instructions.extend(Self::traverse(index));
+                }
+                instructions.reverse();
+                instructions.extend(Self::traverse(value));
+                instructions.push(Instruction::ReloadIndex { name: identifier, depth: indicies.len(), operator: *operator });
                 instructions
             }
 

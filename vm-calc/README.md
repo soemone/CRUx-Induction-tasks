@@ -4,14 +4,14 @@
     - Note that output is only in the decimal number system
 - Strings with basic escape sequences parsed
     - Strings can be conactenated with the `+` operator
-- Basic math operations: Add (`+`), Subtract (`-`), Divide (`/`), Multiply (`*`), Exponent (`**`)
+- Basic math operations: Add (`+`), Subtract (`-`), Divide (`/`), Multiply (`*`), Exponent (`**`), Modulo (`%`)
 - Binary operations: AND (`&`), OR (`|`), XOR (`^`), Left Shift (`<<`), Right Shift (`>>`)
     - Note that these operations will truncate the floating point of both sides before proceeding
 - Variables: Null values or floating point values (64 bit precision)
 - Assignment + Operations on variables, ie. Add + Assign (`+=`), Subtract + Assign (`-=`), so on and so forth. This applies to all operators previously discussed
 - Null values cannot have any operation performed on them
 - Basic function support: each function allows only a single expression to compute
-    - Also note that you cannot override built in functions, but you can your own functions. 
+    - Also note that you cannot override built in functions, but you can do so for your own functions. 
 - Deletion of variables and functions
     - You are not allowed to delete built in functions. Why would you want to? 
 - Command line arguments:
@@ -20,6 +20,8 @@
     - `-w` | `--write-binary` reads a file provided by the next argument and generates the bytecode to stores it as binary file. This file is in the same location with the extension `.bin` if another argument is not provided, otherwise, it stores it to the path provided by that other argument.
     - `-p` | `--show-parsed` Shows the parsed output as a formatted expression, which looks similar to the code provided to it
     - `-i` | `--show-instructions` Shows the instruction set that is produced from the parsed AST tree, which is what the VM executes
+    - `-t` | `--text` Runs the text provided after this flag
+    - `-l` | `--repl` Runs the REPL
 
 Here is a bit of an example of the syntax and the working:
 Try to run it
@@ -39,6 +41,7 @@ print(1, 2, 3, 4); // 1 2 3 4
 5 ** 7:  // 78125
 5 - 7:   // -2
 5 ** -7: // 0.0000128
+5 % 7:   // 5
 
 // of course, any type of well known number system is supported:
 10:    // 10
@@ -92,7 +95,7 @@ delete variable_name;
 "Hello": // Hello
 // String concatenation
 "Hello" + " " + "World": // Hello World
-// Printing achieves the same effect
+// Printing achieves the same effect, although it directly prints to the console rather than allowing the result to be passed on as an output
 print("Hello", "World"); // Hello World
 
 // Functions
@@ -140,8 +143,7 @@ let b = a;
 // b is once again just b. It has been partially called with 0 arguments and is waiting for more arguments to come by
 let b = b();
 // Now you can execute it as so:
-((b(1)(2))(3))(4): // Equivalent to b(1, 2, 3, 4)
-// Note that you need the brackets to make the parser understand what you're calling.
+b(1)(2)(3)(4): // Equivalent to b(1, 2, 3, 4)
 // Or so:
 b(1)(2, 3, 4):
 // Or even:
@@ -153,7 +155,9 @@ let c = b(1, 2);
 // And once passed, c is evaluvated
 c(3, 4,):
 // Yes, you may have an extra comma at the end
-// Now arrays are partially complete
+
+// Now, we have reached arrays
+
 // You can declare them:
 let arr = [1, 2, 3, 4];
 // You can have an array inside an array. I don't care
@@ -162,9 +166,21 @@ let arr = [arr, arr, arr]; // [[1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]]
 // Any index will be truncated to a unsigned integer. Negative values to zero
 arr[0]: // <Array> [1, 2, 3, 4]
 // Many dimensional indexing as well
-// Note that you'll have to explain yourself to the parser here as well
-(arr[0])[0]: // 1
-// That's pretty much it for arrays. No, you cannot modify their values yet
+arr[0][0]: // 1
+// Modifying the values for an array is pretty much the same as other languages as well.
+arr[0] = "Modified";
+arr[1][0] /= arr[2][1];
+arr: // <Array> [Modified, <Array> [0.5, 2, 3, 4], <Array> [1, 2, 3, 4]]
+// That's pretty much it for arrays.
+
+// Values can be passed to other values as you change them
+// Like so,
+let a = let b = 5;
+a: b: // 5, 5
+b = a *= b;
+a: b: // 25, 25
+b = a = 1;
+a: b: // 1, 1
 ```
 Pretty simple, I'd say
 

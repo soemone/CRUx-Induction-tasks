@@ -87,7 +87,12 @@ impl<'a> VM<'a> {
                             Operator::Plus => a + b,
                             Operator::Minus => a - b,
                             Operator::Multiply => a * b,
-                            Operator::Modulo => a % b,
+                            Operator::Modulo => {
+                                if b == 0.0 {
+                                    return Err(VMError::ErrString(format!("Cannot take the modulus of a number by 0!")));
+                                }
+                                a % b
+                            },
                             Operator::Divide => {
                                 if b == 0.0 {
                                     return Err(VMError::ErrString(format!("Cannot divide a number by zero!")));
@@ -164,14 +169,14 @@ impl<'a> VM<'a> {
                     Some(res) => res,
                     None => return Err(VMError::InvalidBytecode), 
                 };
+                self.stack.push(value.clone());
                 self.symbols.insert(name, value);
-                self.stack.push(Value::Null);
             },
 
             Instruction::CallSymbol { name } => {
                 match self.symbols.get(name) {
                     Some(value) => self.stack.push(value.clone()),
-                    // This is handled by the parser
+        
                     None => return Err(VMError::ErrString(format!("The variable `{name}` does not exist!"))),
                 }
             },
@@ -184,11 +189,14 @@ impl<'a> VM<'a> {
                             None => return Err(VMError::InvalidBytecode), 
                         };        
                         *value = new_value;
+                        self.stack.push(value.clone());
                     },
-                    // This is handled by the parser
-                    None => return Err(VMError::ErrString(format!("Cannot assign a value to variable {name} because it does not exist!"))),
+                    None => {
+                        self.stack.push(Value::Null);
+                        return Err(VMError::ErrString(format!("Cannot assign a value to variable {name} because it does not exist!")))
+                    },
                 }
-                self.stack.push(Value::Null);
+                
             },
 
             Instruction::ReloadSymbolOp { name } => {
@@ -205,23 +213,37 @@ impl<'a> VM<'a> {
                             Some(res) => res,
                             None => return Err(VMError::InvalidBytecode), 
                         };
+
                         match (new_value, value) {
                             (Value::Number(a), Value::Number(b)) => {
                                 match operator {
                                     Operator::PlusEqual => *b += a,
                                     Operator::MinusEqual => *b -= a,
-                                    Operator::DivideEqual => *b /= a,
+                                    Operator::DivideEqual => {
+                                        if a == 0.0 {
+                                            return Err(VMError::ErrString(format!("Cannot divide a number by 0!")));
+                                        }
+                                        *b /= a
+                                    },
                                     Operator::MultiplyEqual => *b *= a,
-                                    Operator::ModuloEqual => *b %= a,
+                                    Operator::ModuloEqual => {
+                                        if a == 0.0 {
+                                            return Err(VMError::ErrString(format!("Cannot take the modulus of a number by 0!")));
+                                        }
+                                        *b %= a
+                                    },
                                     Operator::ExponentEqual => *b = f64::powf(*b, a),
                                     Operator::BitOrEqual => *b = (*b as usize | a as usize) as f64,
                                     Operator::BitAndEqual => *b = (*b as usize & a as usize) as f64,
                                     Operator::BitXorEqual => *b = (*b as usize ^ a as usize) as f64,
                                     Operator::BitLeftShiftEqual => *b = ((*b as usize) << a as usize) as f64,
                                     Operator::BitRightShiftEqual => *b = (*b as usize >> a as usize) as f64,
-        
+                                    
+                                    // No other operation can ever reach here
                                     _ => unimplemented!()
                                 };
+
+                                self.stack.push(Value::Number(*b));
                             }
 
                             (Value::String(a), Value::String(b)) => {
@@ -230,6 +252,8 @@ impl<'a> VM<'a> {
         
                                     _ => return Err(VMError::ErrString(format!("Cannot perform operation `{operator}` on strings!"))),
                                 };
+
+                                self.stack.push(Value::String(b.clone()));
                             }
 
                             (new_value, value) => {
@@ -244,10 +268,10 @@ impl<'a> VM<'a> {
                                         );
                             }
                         }
+
                     },
                     None => return Err(VMError::ErrString(format!("Cannot find variable {name} to change its value!"))),
                 }
-                self.stack.push(Value::Null);
             },
 
             // Really slow?
@@ -361,6 +385,10 @@ impl<'a> VM<'a> {
                                 
                                 for _ in 0..(fn_body_end - fn_body_address) {
                                     self.execute_next()?;
+                                    // A stack overflow used to occur when a function declaration was used during initializaion of another 
+                                    // function like `let a _ = (let b _ = 1); a()();`, This would cause a stack overflow due to the function 
+                                    // escaping it's bounds and calling `a` again
+                                    if self.pc >= fn_body_end { break; }
                                 }
     
                                 self.pc = orig_pc;
@@ -420,7 +448,7 @@ impl<'a> VM<'a> {
                 let fn_body_end = self.pc + end;
                 self.pc += end;
                 self.symbols.insert(name, Value::Function(Function::new(args, fn_body_address..fn_body_end)));
-                self.stack.push(Value::Null);
+                self.stack.push(Value::Function(Function::new(args, fn_body_address..fn_body_end)));
             }
 
             Instruction::Print { depth } => {
@@ -456,6 +484,86 @@ impl<'a> VM<'a> {
                 };
             },
             
+            // Change array values
+            Instruction::ReloadIndex { name, depth, operator } => {
+
+                let value = 
+                    match self.stack.pop() {
+                        Some(value) => value,
+                        None => return Err(VMError::InvalidBytecode),
+                    };
+
+                if let Some(item) = self.symbols.get_mut(name) {
+                    let mut item = item;
+                    for _ in 0..*depth {
+                        let index = match self.stack.pop() {
+                            Some(Value::Number(value)) => value as usize,
+                            Some(a) => return Err(VMError::ErrString(format!("Cannot index an array by type {}!", a.type_of()))),
+                            None => return Err(VMError::InvalidBytecode),
+                        };
+                        if let Value::Array(inside_item) = item {
+                            match inside_item.get_mut(index) {
+                                Some(inside_item) => item = inside_item,
+                                None =>
+                                    return Err(VMError::ErrString(format!("Indexing out of bounds of array `{name}`!")))
+                            }
+                        } else {
+                            return Err(VMError::ErrString(format!("Indexing out of bounds of array `{name}`!")))
+                        }
+                    }
+
+                    match (&mut item, value) {
+                        (Value::Number(a), Value::Number(b)) => {
+                            match operator {
+                                Operator::Equal => *a = b,
+                                Operator::PlusEqual => *a += b,
+                                Operator::MinusEqual => *a -= b,
+                                Operator::MultiplyEqual => *a *= b,
+                                Operator::DivideEqual => {
+                                    if b == 0.0 {
+                                        return Err(VMError::ErrString(format!("Cannot divide a number by 0!")));
+                                    }
+                                    *a /= b
+                                },
+                                Operator::ModuloEqual => {
+                                    if b == 0.0 {
+                                        return Err(VMError::ErrString(format!("Cannot take the modulus of a number by 0!")));
+                                    }
+                                    *a %= b
+                                },
+                                Operator::ExponentEqual => *a = a.powf(b),
+                                Operator::BitOrEqual => *a = (*a as usize | (b as usize)) as f64,
+                                Operator::BitAndEqual => *a = (*a as usize & (b as usize)) as f64,
+                                Operator::BitXorEqual => *a = (*a as usize ^ (b as usize)) as f64,
+                                Operator::BitLeftShiftEqual => *a = ((*a as usize) << (b as usize)) as f64,
+                                Operator::BitRightShiftEqual => *a = ((*a as usize) >> (b as usize)) as f64,
+
+                                _ => unimplemented!()
+                            }
+                        },
+
+                        (Value::String(a), Value::String(b)) => {
+                            match operator {
+                                Operator::Equal => *a = b,
+                                Operator::PlusEqual => *a = format!("{a}{b}"),
+                                _ => return Err(VMError::ErrString(format!("Cannot perform operation `{operator}` on strings!")))
+                            }
+                        }
+
+                        (a, b) => {
+                            match operator {
+                                Operator::Equal => **a = b,
+                                _ => return Err(VMError::ErrString(format!("Cannot perform operation {operator} on incompatible types {} and {}!", a.type_of(), b.type_of())))
+                            }
+                        }
+                    }
+                    self.stack.push(item.clone());
+                } else {
+                    return Err(VMError::ErrString(format!("The variable `{name}` of type `{}` does not exist!", "{Array}")))
+                }
+                
+            }
+
             instruction => 
                 return 
                     Err(

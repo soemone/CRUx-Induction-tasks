@@ -98,6 +98,13 @@ pub enum Instruction<'a> {
         name: &'a str,
     },
 
+    /// Changes the value at a position in an array
+    ReloadIndex {
+        name: &'a str,
+        depth: usize,
+        operator: Operator,
+    },
+
     /// Invoke the value of a variable
     CallSymbol {
         name: &'a str,
@@ -109,35 +116,42 @@ pub enum Instruction<'a> {
         len: usize,
     },
 
-    /// Invoke a function
+    /// Invoke a partial function
     PartialCall {
         name: &'a str,
         len: usize,
     },
 
+    /// A function declaration
     FunctionDecl {
         name: &'a str,
     },
 
+    /// Used to declare a function argument
     ArgumentName {
         name: &'a str,
     },
 
+    /// Deletes a variable or function
     Delete {
         name: &'a str,
     },
 
+    /// Calls the print function
     Print {
         depth: usize
     },
 
+    /// Data of type unsigned int
     UData { number: usize },
 
+    /// An operator
     OData { operator: Operator },
 
     /// An array
     Array { len: usize, },
 
+    /// Array indexing, used to access the value in an array
     Index,
 
     /// A null value

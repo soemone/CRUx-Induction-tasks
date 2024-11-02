@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{tokens::TokenType, utils::Span};
 
+// This is pretty redundant, and could probably be phased out for just using `TokenType`
+/// An operator
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Operator {
     // Arithmetic operators
@@ -31,11 +33,14 @@ pub enum Operator {
     BitXorEqual,
     BitLeftShiftEqual,
     BitRightShiftEqual,
+
+    Equal,
 }
 
 impl Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let res = match self {
+            Self::Equal => "=",
             Self::Plus => "+",
             Self::Minus => "-",
             Self::Multiply => "*",
@@ -66,6 +71,7 @@ impl Display for Operator {
 impl From<TokenType> for Operator {    
     fn from(value: TokenType) -> Self {
         match value {
+            TokenType::Equal => Self::Equal,
             TokenType::Add => Self::Plus,
             TokenType::AddEqual => Self::Plus,
             TokenType::Subtract => Self::Minus,
@@ -111,42 +117,51 @@ impl Display for Tree<'_> {
 
 #[derive(Debug, PartialEq)]
 pub enum AST<'a> {
+    /// Binary operations applied to numbers, and strings where applicable
     BinaryOp { 
         lhs: Rc<Tree<'a>>,
         rhs: Rc<Tree<'a>>,
         op: Operator,
     },
 
+    /// The operator + / - applied to a number
     UnaryOp { 
         rhs: Rc<Tree<'a>>,
         op: Operator,
     },
 
+    /// The most fundamental type, a number used for all operations
     Number {
         value: f64,
     },
 
+    /// An identifier for variables / functions etc.
     Identifier {
         name: &'a str,
     },
 
+    /// Declaring and assigning a value to a variable in the same expression
     DeclareAssign {
         identifier: &'a str,
         identifier_span: Span,
         value: Rc<Tree<'a>>,
     },
 
+    /// Declaring a variable
     Declare {
         identifier: &'a str,
         identifier_span: Span,
     },
 
+    // These two can probably be combined, like how AssignIndex works
+    /// Just a normal assignment for a variable
     Assign {
         identifier: &'a str,
         identifier_span: Span,
         value: Rc<Tree<'a>>,
     },
 
+    /// Assign + operator for a variable
     AssignOp {
         identifier: &'a str,
         identifier_span: Span,
@@ -154,55 +169,75 @@ pub enum AST<'a> {
         operator: Operator,
     },
 
+    /// Assign data to an array at the given index or indices for a multi-dimensional array
+    AssignIndex {
+        identifier: &'a str,
+        value: Rc<Tree<'a>>,
+        operator: Operator,
+        indicies: Vec<Rc<Tree<'a>>>,
+    },
+
+    /// Tells the VM to push the result to the output
     Output {
         value: Rc<Tree<'a>>,
     },
 
+    /// Calls a function
     FunctionCall {
         name: Rc<Tree<'a>>,
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    /// Declare a function
     FunctionDecl {
         name: &'a str,
         arguments: Vec<&'a str>,
         body: Rc<Tree<'a>>,
     },
 
+    /// Partially calls a function
     PartialCall {
         name: &'a str,
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    /// Used to delete variables or functions
     Delete {
         name: &'a str,
     },
 
+    /// Invokes the print function
     Print {
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    /// A string
     String {
         contents: String,
     },
 
+    /// Used for direct function calls to a variable
     Name {
         value: &'a str,
     },
 
+    /// Get the type of a specific value or a function
     TypeOf {
         expression: Rc<Tree<'a>>,
     },
 
+    /// Create an array
     Array {
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    /// Index an array to get the value
     Index {
         to_index: Rc<Tree<'a>>,
         expression: Rc<Tree<'a>>,
     },
-    
+
+    /// A null value
     Null,
 }
 
@@ -225,6 +260,15 @@ impl Display for AST<'_> {
 
             Self::Assign { identifier, value, .. } => write!(f, "({identifier} = {value})"),
             Self::AssignOp { operator, identifier, value, .. } => write!(f, "({identifier} {operator} {value})"),
+            
+            Self::AssignIndex { identifier, value, indicies, operator } => {
+                let mut arguments = String::new();
+                for expr in indicies {
+                    arguments = format!("{arguments}[{expr}]");
+                }
+                write!(f, "({identifier}{arguments} {operator} {value})")
+            }
+            
             Self::DeclareAssign { identifier, value, .. } => write!(f, "(let {identifier} = {value})"),
             Self::Declare { identifier, identifier_span: _ } =>  write!(f, "(let {identifier})"),
             

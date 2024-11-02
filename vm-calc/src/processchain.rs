@@ -1,5 +1,6 @@
 use crate::{bytecode::Bytecode, lexer::Lexer, parser::Parser, vm::VM};
 
+// Could have been a module
 pub struct ProcessChain { }
 
 impl ProcessChain {

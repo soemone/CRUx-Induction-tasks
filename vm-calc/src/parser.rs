@@ -6,7 +6,6 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     token: Token,
     pub(crate) eof: bool,
-    // pub(crate) function_symbols: HashMap<&'a str, (usize, bool)>,
     pub(crate) symbols: HashMap<Symbol<'a>, usize>,
 }
 macro_rules! create_fn {
@@ -43,7 +42,6 @@ impl<'a> Parser<'a> {
             token: Token::null(),
             lexer,
             eof: false,
-            // function_symbols: HashMap::new(),
             symbols: HashMap::new(),
         }
     }
@@ -53,7 +51,6 @@ impl<'a> Parser<'a> {
             token: Token::null(),
             lexer,
             eof: false,
-            // function_symbols,
             symbols,
         }
     }
@@ -203,78 +200,138 @@ impl<'a> Parser<'a> {
     }
 
     fn index(&mut self) -> Result<Rc<Tree<'a>>, Error> {
-        let start: usize = self.token.span.start;
-        let result = self.partial()?;
-        match self.token.token_type {
-            TokenType::OpenArray => {
-                self.increment()?;
-                let expr_start = self.token.span.start;
-                let expression = self.final_stage()?;
-                if self.token.token_type != TokenType::CloseArray {
-                    return Err(Error::PError { 
-                        message: 
-                            format!("Expected a closing index bracket `]`{}!", 
-                                if self.eof { format!(" But found an unexpected end of file!") } 
-                                else { format!(" But found an unexpected token `{}`!", self.token.token_type) }
-                            ), 
-                        span: Span::new(expr_start, self.token.span.end),
-                    });
-                }
+        let start = self.token.span.start;
+        let mut result = self.partial()?;
 
-                self.increment()?;
-                let end = self.token.span.end - 1;
+        let mut name = None;
 
-                Ok(Rc::new(
-                    Tree::new(
-                        AST::Index { to_index: result, expression },
-                        Span::new(start, end)
-                    )
-                ))
-            },
-
-            _ => Ok(result)
+        if let AST::Identifier { name: named } = result.ast {
+            name = Some(named);
         }
+
+        let mut expressions = vec![];
+
+        while self.token.token_type == TokenType::OpenArray {
+            self.increment()?;
+            let expr_start = self.token.span.start;
+            let expression = self.final_stage()?;
+            if self.token.token_type != TokenType::CloseArray {
+                return Err(Error::PError { 
+                    message: 
+                        format!("Expected a closing index bracket `]`{}!", 
+                            if self.eof { format!(" But found an unexpected end of file!") } 
+                            else { format!(" But found an unexpected token `{}`!", self.token.token_type) }
+                        ), 
+                    span: Span::new(expr_start, self.token.span.end),
+                });
+            }
+
+            self.increment()?;
+            let end = self.token.span.end - 1;
+
+            expressions.push(expression.clone());
+
+            result = Rc::new(
+                Tree::new(
+                    AST::Index { to_index: result, expression },
+                    Span::new(start, end)
+                )
+            );
+        }
+
+        let token_type = self.token.token_type.clone();
+
+        let operator = |operator| {
+            self.increment()?;
+
+            if self.eof {
+                return Err(Error::PError { 
+                    message: format!("Unexpected end of file while performing `{operator}` on a variable! Help: Provide an expression to the right of the `{operator}` symbol"), 
+                    span: Span::new(start, self.token.span.end),
+                });
+            }
+
+            let result = self.final_stage()?;
+            let end = result.span.end;
+
+            match name {
+                Some(name) => {
+                    return Ok(Rc::new(
+                        Tree::new(
+                            AST::AssignIndex { identifier: name, indicies: expressions, value: result, operator },
+                            Span::new(start, end)
+                        )
+                    ));
+                },
+
+                None =>
+                    return Err(
+                        Error::PError { 
+                            message: format!("Cannot assign values to temporary arrays / non-arrays!"), 
+                            span: Span::new(start, end) 
+                        }
+                    ),
+            }
+
+        };
+
+        match token_type {
+            TokenType::Equal => return operator(Operator::Equal),
+            TokenType::AddEqual => return operator(Operator::PlusEqual),
+            TokenType::SubtractEqual => return operator(Operator::MinusEqual),
+            TokenType::MultiplyEqual => return operator(Operator::MultiplyEqual),
+            TokenType::DivideEqual => return operator(Operator::DivideEqual),
+            TokenType::ExponentEqual => return operator(Operator::ExponentEqual),
+            TokenType::ModuloEqual => return operator(Operator::ModuloEqual),
+            TokenType::BitAndEqual => return operator(Operator::BitAndEqual),
+            TokenType::BitOrEqual => return operator(Operator::BitOrEqual),
+            TokenType::BitXorEqual => return operator(Operator::BitXorEqual),
+            TokenType::BitLeftShiftEqual => return operator(Operator::BitLeftShiftEqual),
+            TokenType::BitRightShiftEqual => return operator(Operator::BitRightShiftEqual),
+            _ => (),
+        }
+
+        Ok(result)
     }
 
     fn partial(&mut self) -> Result<Rc<Tree<'a>>, Error> {
-        let start: usize = self.token.span.start;
-        let result = self.base()?;
-        match self.token.token_type {
-            TokenType::OpeningBracket => {
-                self.increment()?;
-                let expr_start = self.token.span.start;
-                let mut expressions = vec![];
+        let start = self.token.span.start;
+        let mut result = self.base()?;
+
+        while self.token.token_type == TokenType::OpeningBracket {
+            self.increment()?;
+            let expr_start = self.token.span.start;
+            let mut expressions = vec![];
+            
+            while self.token.token_type != TokenType::ClosingBracket {
                 
-                while self.token.token_type != TokenType::ClosingBracket {
-                    
-                    if self.eof {
-                        return Err(Error::PError { 
-                            message: format!("Unexpected end of file while calling function! Did you mean to type `)` to close the function call?"), 
-                            span: Span::new(expr_start, self.token.span.end),
-                        })
-                    }
-
-                    expressions.push(self.final_stage()?);
-
-                    if self.token.token_type == TokenType::ClosingBracket {
-                        break;
-                    }
-
-                    self.expect(TokenType::Comma)?;
-                    self.increment()?;
+                if self.eof {
+                    return Err(Error::PError { 
+                        message: format!("Unexpected end of file while calling function! Did you mean to type `)` to close the function call?"), 
+                        span: Span::new(expr_start, self.token.span.end),
+                    })
                 }
-                self.increment()?;
-                let end = self.token.span.end - 1;
-                Ok(Rc::new(
-                    Tree::new(
-                        AST::FunctionCall{ name: result, expressions },
-                        Span::new(start, end)
-                    )
-                ))
-            },
 
-            _ => Ok(result)
+                expressions.push(self.final_stage()?);
+
+                if self.token.token_type == TokenType::ClosingBracket {
+                    break;
+                }
+
+                self.expect(TokenType::Comma)?;
+                self.increment()?;
+            }
+            self.increment()?;
+            let end = self.token.span.end - 1;
+            result = Rc::new(
+                Tree::new(
+                    AST::FunctionCall{ name: result, expressions },
+                    Span::new(start, end)
+                )
+            );
         }
+
+        Ok(result)
     }
 
     fn base(&mut self) -> Result<Rc<Tree<'a>>, Error> {
@@ -637,14 +694,6 @@ impl<'a> Parser<'a> {
 
                         _ => ()
                     };
-
-                    // Check if the variable exists
-                    // if let None = self.symbols.get(&Symbol::Variable(name)) {
-                    //     return Err(Error::PError { 
-                    //         message: format!("The variable `{name}` does not exist!"), 
-                    //         span: Span::new(start, ident_end),
-                    //     });
-                    // }
 
                     // An identifier
                     Ok(Rc::new(
