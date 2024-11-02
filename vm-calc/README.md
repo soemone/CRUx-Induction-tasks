@@ -7,7 +7,7 @@
 - Basic math operations: Add (`+`), Subtract (`-`), Divide (`/`), Multiply (`*`), Exponent (`**`), Modulo (`%`)
 - Binary operations: AND (`&`), OR (`|`), XOR (`^`), Left Shift (`<<`), Right Shift (`>>`)
     - Note that these operations will truncate the floating point of both sides before proceeding
-- Variables: Null values or floating point values (64 bit precision)
+- Variables: Null values, floating point values, strings and functions (64 bit precision)
 - Assignment + Operations on variables, ie. Add + Assign (`+=`), Subtract + Assign (`-=`), so on and so forth. This applies to all operators previously discussed
 - Null values cannot have any operation performed on them
 - Basic function support: each function allows only a single expression to compute

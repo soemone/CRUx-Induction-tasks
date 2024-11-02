@@ -1,3 +1,7 @@
+// Used to prevent the compiler from producing warnings on code that I cannot change due to the format of the 
+// JSON produced by the GitHub CLI
+#![allow(unused, non_snake_case)]
+
 use serde::Deserialize;
 
 #[derive(Deserialize, Clone)]

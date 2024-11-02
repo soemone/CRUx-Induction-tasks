@@ -1,12 +1,11 @@
-use std::{fmt::format, process::Command, rc::Rc, sync::Arc};
+use std::process::Command;
 
 use crate::desc::*;
 
-use cursive::{self, align::Align, backend::Dummy, backends::crossterm::crossterm::{event::{MouseButton, MouseEvent, MouseEventKind}, style::{ContentStyle, StyledContent, Stylize}}, buffer, direction::Orientation, event::{Event, Key}, reexports::toml::Table, theme::{BaseColor, BorderStyle, Color, ColorStyle, Effect, PaletteStyle, Style, StyleType}, utils::span::SpannedString, view::{Nameable, Resizable, Scrollable, SizeConstraint}, views::{BoxedView, Button, Dialog, EditView, Layer, LinearLayout, ListView, OnEventView, Panel, SelectView, TextContent, TextView, ViewRef}, Cursive, CursiveExt, View, XY};
-use serde::{Deserialize, Serialize};
+use cursive::{self, align::Align, direction::Orientation, event::{Event, Key}, theme::{Color, ColorStyle, Effect, Style}, utils::span::SpannedString, view::{Nameable, Resizable, Scrollable}, views::{Dialog, EditView, LinearLayout, ListView, Panel, SelectView, TextView, ViewRef}, Cursive, CursiveExt};
 
 pub struct UI {
-    base: Cursive,
+    pub(crate) base: Cursive,
 }
 
 impl UI {
@@ -35,14 +34,14 @@ impl UI {
                     let text = TextView::new("You have not yet logged in to the GitHub CLI. Log in to use this interface.\nTo login, run `gh auth login` and follow as directed");
                     app.add_layer(
                         Dialog::around(text)
-                        .button("Ok", |app| app.quit())
+                        .button("Ok, I'll come back once I've logged in", |app| app.quit())
                         .title("Login, please")
                     );
                 } else if !error.is_empty() {
                     let text = TextView::new(format!("An error occured while trying to run the command to fetch your repos! Error {error}"));
                     app.add_layer(
                         Dialog::around(text)
-                        .button("Ok", |app| app.quit())
+                        .button("Quit", |app| app.quit())
                         .title("I failed")
                     );
                 } else {
@@ -83,7 +82,7 @@ impl UI {
                                             else { format!("[{}]", json.visibility) }, json.name
                                         );
 
-                                    if data.len() >= 3 && search_str.to_lowercase().contains(&data.to_lowercase()) {
+                                    if data.len() >= 3 && Self::is_simple_match(&data.to_lowercase(), &search_str.to_lowercase()) {
                                         let key = format!("{}/{}", json.owner.login, json.name);
                                         let item: Option<ViewRef<SelectView>> = app.find_name(key.as_str());
                                         matches.0 += 1;
@@ -102,7 +101,7 @@ impl UI {
                                     }
                                 }
                                 if matches.0 == 1 {
-                                    Self::open_repo_ui(app, &matches.1);
+                                    Self::open_repo_ui(app, &matches.1, false);
                                 }
                             });
                             list.add_child(ListView::new().child("Search", input));
@@ -128,7 +127,7 @@ impl UI {
                                                 else { format!("[{}]", json.visibility) }, json.name), 
                                                 format!("{}/{}", json.owner.login, json.name)
                                             )
-                                        .on_submit(|app, item: &String| { Self::open_repo_ui(app, item) })
+                                        .on_submit(|app, item: &String| { Self::open_repo_ui(app, item, false) })
                                         .with_name(format!("{}/{}", json.owner.login, json.name));
                                 list.add_child(clickable);
                             }
@@ -145,7 +144,7 @@ impl UI {
                         Err(error) => {
                             app.add_layer(
                                 Dialog::around(TextView::new(format!("{result}\nFailed to fetch your repositories! Error {error}")))
-                                .button("Ok", |app| app.quit())
+                                .button("Quit", |app| app.quit())
                                 .title("I failed")
                             );
                         }
@@ -158,7 +157,7 @@ impl UI {
         };
     }
 
-    fn open_repo_ui(app: &mut Cursive, repo_to_open: &String) {
+    pub fn open_repo_ui(app: &mut Cursive, repo_to_open: &String, from_command_line: bool) {
         // Remove the previous layer
         app.pop_layer();
         match Command::new("gh").args(["issue", "list", "--state", "all", "--repo", repo_to_open.as_str(), "--json", "title,state,labels,body,author,comments"]).output() { 
@@ -167,13 +166,26 @@ impl UI {
                 let result = String::from_utf8(value.stdout).unwrap();
 
                 if !error.is_empty() {
-                    let text = TextView::new(format!("An error occured while trying to run the command to fetch your repos! Error {error}"));
-                    app.add_layer(
-                        Dialog::around(text)
-                        .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
-                        .button("Ok", |app| app.quit())
-                        .title("I failed")
-                    );
+                    if from_command_line {
+                        app.add_layer(
+                            Dialog::around(TextView::new(
+                                format!(
+                                    "I could not find the repository `{repo_to_open}`, or I could not connect to it! Try checking for mispellings, make sure the format <owner>/<repo_name> is correct and check your connection.\nError {error}"
+                                )    
+                            ))
+                            .button("Show Repositories", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                            .button("Quit", |app| app.quit())
+                            .title("I failed")
+                        );
+                    } else {
+                        let text = TextView::new(format!("An error occured while trying to run the command to fetch your repos! Error {error}"));
+                        app.add_layer(
+                            Dialog::around(text)
+                            .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                            .button("Quit", |app| app.quit())
+                            .title("I failed")
+                        );
+                    }
                 } else {
 
                     let parsed_json: Result<Vec<IssueData>, serde_json::Error> = serde_json::from_str(&result);
@@ -212,7 +224,6 @@ impl UI {
                                     }
                                 };
 
-
                                 let input_result = result.clone();
                                 input.set_on_submit(move |app, data| {
                                     let mut matches = (0, None);
@@ -245,7 +256,6 @@ impl UI {
                                     }
                                 });
 
-
                                 left_side.add_child(input);
                             }
 
@@ -276,7 +286,7 @@ impl UI {
                             view.add_child(TextView::new(" "));
                             view.add_child(right_side.with_name("right_side").full_screen().scrollable());
 
-                            let mut dialog =                                 
+                            let dialog =                                 
                                 Dialog::around(view.full_screen())
                                     .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
                                     .button("Help", |app| Self::help_ui(app))
@@ -287,9 +297,9 @@ impl UI {
 
                         Err(error) => {
                             app.add_layer(
-                                Dialog::around(TextView::new(format!("An error occured when trying to read issue data of the repository `{repo_to_open}`! Error {error}\n {result}")))
+                                Dialog::around(TextView::new(format!("An error occured when trying to read issue data of the repository `{repo_to_open}`! Error {error}")))
                                 .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
-                                .button("Ok", |app| app.quit())
+                                .button("Quit", |app| app.quit())
                                 .title("I failed")
                             );
                         }
@@ -301,7 +311,7 @@ impl UI {
                 app.add_layer(
                     Dialog::around(TextView::new(format!("Failed to fetch data on repository `{repo_to_open}`! Error {error}")))
                     .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
-                    .button("Ok", |app| app.quit())
+                    .button("Quit", |app| app.quit())
                     .title("I failed")
                 );
             }
@@ -388,7 +398,7 @@ impl UI {
         ));
 
         list.add_child(
-            TextView::new("\nRunning this CLI with a repository name / after selecting your repository from the launch UI")
+            TextView::new("\nRunning this CLI with a repository as an argument `<orgname/owner>/repository` or after selecting your repository from the launch UI")
                 .style(
                     Style::from(ColorStyle::secondary())
                         .combine(Effect::Underline)
@@ -396,7 +406,7 @@ impl UI {
         );
 
         list.add_child(TextView::new(
-            "To your left, you have the details about a automatically selected first issue, if you have at least one issue"
+            "To your left, you have the details about an automatically selected first issue, if you have at least one issue"
         ));
 
         list.add_child(TextView::new(
@@ -497,10 +507,10 @@ impl UI {
 
             }
         }
-        Self::is_simple_match(&input, data)
+        Self::is_data_match(&input, data)
     }
 
-    fn is_simple_match(input: &str, data: &IssueData) -> bool {            
+    fn is_data_match(input: &str, data: &IssueData) -> bool {            
         let item = input.trim().to_lowercase();
         if item.len() < 3 { return false; }
 
@@ -540,11 +550,22 @@ impl UI {
 
         // Fuzzy search labels and title. Idk if labels are required, but whatever.
         for searched in to_fuzzy_search {
-            if !searched.trim().is_empty() && (Self::is_within_acceptable_error(searched, item.to_string(), 0)) {
+            if !searched.trim().is_empty() && Self::is_within_acceptable_error(searched, item.to_string(), 0) {
                 return true;
             }
         }
 
+        false
+    }
+
+    fn is_simple_match(input: &str, search_str: &str) -> bool {
+        if 
+            !input.trim().is_empty() && 
+            !search_str.trim().is_empty() && 
+            (Self::is_within_acceptable_error(input.to_string(), search_str.to_string(), 0) || search_str.contains(&input))
+        {
+            return true;
+        }
         false
     }
 
@@ -559,8 +580,8 @@ impl UI {
         // This number is pretty arbitrary
         // It *seems* to be a good balance of accepting mistakes and not returning true for obvious non-matches
         let threshold = 0.37;
-        // Number of times to shift to next space
-        let iteration_threshold = 3;
+        // Number of times to shift to next delimiter
+        let iteration_threshold = 5;
 
         // Look for a space to test starting there
         if a.get(0..1) != b.get(0..1) {
@@ -568,7 +589,11 @@ impl UI {
             if b.len() > a.len() {
                 std::mem::swap(&mut a, &mut b);
             }
-            if let Some(location) = a.find(" ") {
+
+            let matches_delim = 
+                |c| 
+                    matches!(c, ' ' | '-' | '[' | ']' | '(' | ')' | '|' | '{' | '}' | '+' | '_' | '`' | '~' | ':' | ';' | ',' | '.' | '\\' | '?');
+            if let Some(location) = a.find(matches_delim) {
                 a = a[location..].to_string();
             } 
             // No matching start location was found
