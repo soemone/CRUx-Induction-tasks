@@ -11,7 +11,7 @@ Run this binary without any arguments, or with an argument of the form `<orgname
 # Directly open up repo selector UI
 cargo run --release
 # Or:
-cargo run --release -- "<orgname/owner>/<repository>"
+cargo run --release -- "<orgname/owner>/<repository>" -L "<your max issue limit>"
 ```
 
 Select your repository in the UI
@@ -19,7 +19,7 @@ Then view the associated issues
 
 ### Limitations
 - Currently shows only the first N (default = 30) issues (This can be changed by passing `-L <number of max issues>`), but at the cost of slower data fetching
-- Issues that are longer than 50 characters are cutoff and cannot be horizontally scrolled to view
+- Issues that have a title longer than 50 characters are cutoff and cannot be horizontally scrolled to view
 
 ### This app is built using:
 - serde, serde-json: To parse the JSON that the GitHub CLI returns
