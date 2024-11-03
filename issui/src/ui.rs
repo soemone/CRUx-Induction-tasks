@@ -6,6 +6,7 @@ use cursive::{self, align::Align, direction::Orientation, event::{Event, Key}, t
 
 pub struct UI {
     pub(crate) base: Cursive,
+    pub(crate) max_issues: usize,
 }
 
 impl UI {
@@ -17,15 +18,15 @@ impl UI {
         base.add_global_callback(Event::Key(Key::Esc), |app| app.quit());
         base.add_global_callback('h', |app| Self::help_ui(app));
 
-        Self { base }
+        Self { base, max_issues: 30 }
     }
 
     pub fn run(&mut self) {
-        Self::select_repo_ui(&mut self.base);
+        Self::select_repo_ui(&mut self.base, self.max_issues);
         self.base.run();
     }
 
-    fn select_repo_ui(app: &mut Cursive) {
+    fn select_repo_ui(app: &mut Cursive, max_issues: usize) {
         match Command::new("gh").args(["repo", "list", "--json", "name,owner,visibility"]).output() {
             Ok(value) => {
                 let error = String::from_utf8(value.stderr).unwrap();
@@ -101,7 +102,7 @@ impl UI {
                                     }
                                 }
                                 if matches.0 == 1 {
-                                    Self::open_repo_ui(app, &matches.1, false);
+                                    Self::open_repo_ui(app, &matches.1, false, max_issues);
                                 }
                             });
                             list.add_child(ListView::new().child("Search", input));
@@ -127,7 +128,7 @@ impl UI {
                                                 else { format!("[{}]", json.visibility) }, json.name), 
                                                 format!("{}/{}", json.owner.login, json.name)
                                             )
-                                        .on_submit(|app, item: &String| { Self::open_repo_ui(app, item, false) })
+                                        .on_submit(move |app, item: &String| { Self::open_repo_ui(app, item, false, max_issues) })
                                         .with_name(format!("{}/{}", json.owner.login, json.name));
                                 list.add_child(clickable);
                             }
@@ -157,10 +158,10 @@ impl UI {
         };
     }
 
-    pub fn open_repo_ui(app: &mut Cursive, repo_to_open: &String, from_command_line: bool) {
+    pub fn open_repo_ui(app: &mut Cursive, repo_to_open: &String, from_command_line: bool, max_issues: usize) {
         // Remove the previous layer
         app.pop_layer();
-        match Command::new("gh").args(["issue", "list", "--state", "all", "--repo", repo_to_open.as_str(), "--json", "title,state,labels,body,author,comments"]).output() { 
+        match Command::new("gh").args(["issue", "list", "-L", &max_issues.to_string(), "--state", "all", "--repo", repo_to_open.as_str(), "--json", "title,state,labels,body,author,comments"]).output() { 
             Ok(value) => {
                 let error = String::from_utf8(value.stderr).unwrap();
                 let result = String::from_utf8(value.stdout).unwrap();
@@ -173,7 +174,7 @@ impl UI {
                                     "I could not find the repository `{repo_to_open}`, or I could not connect to it! Try checking for mispellings, make sure the format <owner>/<repo_name> is correct and check your connection.\nError {error}"
                                 )    
                             ))
-                            .button("Show Repositories", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                            .button("Show Repositories", move |app| { app.pop_layer(); Self::select_repo_ui(app, max_issues); })
                             .button("Quit", |app| app.quit())
                             .title("I failed")
                         );
@@ -181,7 +182,7 @@ impl UI {
                         let text = TextView::new(format!("An error occured while trying to run the command to fetch your repos! Error {error}"));
                         app.add_layer(
                             Dialog::around(text)
-                            .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                            .button("Back", move |app| { app.pop_layer(); Self::select_repo_ui(app, max_issues); })
                             .button("Quit", |app| app.quit())
                             .title("I failed")
                         );
@@ -318,7 +319,7 @@ impl UI {
 
                             let dialog =                                 
                                 Dialog::around(view.full_screen())
-                                    .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                                    .button("Back", move |app| { app.pop_layer(); Self::select_repo_ui(app, max_issues); })
                                     .button("Help", |app| Self::help_ui(app))
                                     .button("Quit", |app| app.quit());
 
@@ -328,7 +329,7 @@ impl UI {
                         Err(error) => {
                             app.add_layer(
                                 Dialog::around(TextView::new(format!("An error occured when trying to read issue data of the repository `{repo_to_open}`! Error {error}")))
-                                .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                                .button("Back", move |app| { app.pop_layer(); Self::select_repo_ui(app, max_issues); })
                                 .button("Quit", |app| app.quit())
                                 .title("I failed")
                             );
@@ -340,7 +341,7 @@ impl UI {
             Err(error) => {
                 app.add_layer(
                     Dialog::around(TextView::new(format!("Failed to fetch data on repository `{repo_to_open}`! Error {error}")))
-                    .button("Back", |app| { app.pop_layer(); Self::select_repo_ui(app); })
+                    .button("Back", move |app| { app.pop_layer(); Self::select_repo_ui(app, max_issues); })
                     .button("Quit", |app| app.quit())
                     .title("I failed")
                 );
@@ -429,7 +430,20 @@ impl UI {
         ));
 
         list.add_child(
-            TextView::new("\nRunning this CLI with a repository as an argument `<orgname/owner>/repository` or after selecting your repository from the launch UI")
+            TextView::new("\nRunning this CLI with arguments")
+                .style(
+                    Style::from(ColorStyle::secondary())
+                        .combine(Effect::Underline)
+                )
+        );
+
+        list.add_child(TextView::new(
+            "This CLI supports the following arguments: \nRepository: The repository to open - Form: <owner/org>/<repository>\nLimit: Max issues to load - Form: -L | --limit <max number of issues>."
+        ));
+
+
+        list.add_child(
+            TextView::new("\nRunning this CLI with a repository as an argument or after selecting your repository from the launch UI")
                 .style(
                     Style::from(ColorStyle::secondary())
                         .combine(Effect::Underline)

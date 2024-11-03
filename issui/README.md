@@ -18,7 +18,7 @@ Select your repository in the UI
 Then view the associated issues
 
 ### Limitations
-- Currently shows only the first 30 issues
+- Currently shows only the first N (default = 30) issues (This can be changed by passing `-L <number of max issues>`), but at the cost of slower data fetching
 - Issues that are longer than 50 characters are cutoff and cannot be horizontally scrolled to view
 
 ### This app is built using:

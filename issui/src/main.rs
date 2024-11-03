@@ -13,6 +13,8 @@ use clap::Parser;
 #[command(version, about, long_about = None)]
 struct Args {
     path: Option<String>,
+    #[arg(short='L', long="limit")]
+    max_issues: Option<usize>
 }
 
 fn main() {
@@ -20,8 +22,13 @@ fn main() {
         Ok(..) => {
             let args = Args::parse();
             let mut ui = UI::new();
+
+            if let Some(max_issues) = args.max_issues {
+                ui.max_issues = max_issues;
+            }
+
             if let Some(path) = args.path {
-                UI::open_repo_ui(&mut ui.base, &path, true);
+                UI::open_repo_ui(&mut ui.base, &path, true, ui.max_issues);
                 ui.base.run();
             } else {
                 ui.run();
