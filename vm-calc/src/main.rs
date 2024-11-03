@@ -143,7 +143,9 @@ fn run() -> Result<(), ()> {
         None => (),
     }
 
-    if args.repl {
+    // No point in this, but yes.
+    // Runs the repl anyway if no other commands are passed
+    if args.repl || true {
         repl();
     }
 

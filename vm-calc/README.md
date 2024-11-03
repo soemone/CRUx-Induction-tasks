@@ -21,7 +21,14 @@
     - `-p` | `--show-parsed` Shows the parsed output as a formatted expression, which looks similar to the code provided to it
     - `-i` | `--show-instructions` Shows the instruction set that is produced from the parsed AST tree, which is what the VM executes
     - `-t` | `--text` Runs the text provided after this flag
-    - `-l` | `--repl` Runs the REPL
+    - `-l` | `--repl` Runs the REPL, Runs the REPL even if nothing has been passed as the argument
+
+### Execution
+```bash
+# Tested on Rust version 1.82.0, likely runs on other versions
+# But for best support, use the most recent version of Rust
+cargo run --release -- arguments
+```
 
 Here is a bit of an example of the syntax and the working:
 Try to run it
