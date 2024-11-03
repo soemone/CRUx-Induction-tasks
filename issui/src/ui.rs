@@ -2,7 +2,7 @@ use std::process::Command;
 
 use crate::desc::*;
 
-use cursive::{self, align::Align, direction::Orientation, event::{Event, Key}, theme::{Color, ColorStyle, Effect, Style}, utils::span::SpannedString, view::{Nameable, Resizable, Scrollable}, views::{Dialog, EditView, LinearLayout, ListView, Panel, SelectView, TextView, ViewRef}, Cursive, CursiveExt};
+use cursive::{self, align::Align, direction::Orientation, event::{Event, Key}, theme::{Color, ColorStyle, Effect, Style}, utils::span::SpannedString, view::{Nameable, Resizable, Scrollable}, views::{Button, Dialog, DummyView, EditView, LinearLayout, ListView, Panel, SelectView, TextContent, TextView, ViewRef}, Cursive, CursiveExt, View};
 
 pub struct UI {
     pub(crate) base: Cursive,
@@ -203,10 +203,6 @@ impl UI {
                             ));
 
                             if !result.is_empty() {
-                                left_side.add_child(TextView::new("Search").align(Align::center()));
-
-                                let mut input = EditView::new();
-
                                 let remove_styles = |app: &mut Cursive, issue_data: &IssueData| {
                                     let key = &issue_data.title;
                                     let item: Option<ViewRef<SelectView<IssueData>>> = app.find_name(key.as_str());
@@ -223,6 +219,40 @@ impl UI {
                                         None => (),
                                     }
                                 };
+
+                                let repo_to_open = repo_to_open.clone();
+                                let link = Button::new("Open issues in browser", move |app| {
+                                    let link = format!("https://github.com/{repo_to_open}/issues");
+                                    let text_content = TextContent::new("Opened the issue in the browser!");
+                                    let mut title = "Success!";
+                                    match open::that(&link) {
+                                        Ok(..) => (),
+                                        Err(error) => {
+                                            title = "I failed";
+                                            text_content.set_content(format!("I failed to open the issue in your browser! Error {error}"));
+                                        }
+                                    }
+                                    // Pop previous layer and add it back when requested by the user
+                                    let last_layer = app.pop_layer();
+                                    app.set_user_data(last_layer);
+                                    app.add_layer(
+                                        Dialog::around(TextView::new_with_content(text_content))
+                                                .title(title)
+                                                .button("Back", move |app| { 
+                                                    app.pop_layer(); 
+                                                    if let Some(view) = app.with_user_data(|data: &mut Option<Box<dyn View>>| data.take()).unwrap() {
+                                                        app.add_layer(view);
+                                                    }
+                                                })
+                                                .button("Quit", |app| app.quit())
+                                            );
+                                });
+
+                                left_side.add_child(Panel::new(link));
+
+                                left_side.add_child(TextView::new("Search").align(Align::center()));
+
+                                let mut input = EditView::new();
 
                                 let input_result = result.clone();
                                 input.set_on_submit(move |app, data| {
@@ -257,6 +287,7 @@ impl UI {
                                 });
 
                                 left_side.add_child(input);
+                                left_side.add_child(DummyView.fixed_height(1));
                             }
 
                             for i in 0..result.len() {
@@ -281,8 +312,7 @@ impl UI {
                                 right_side.add_child(TextView::new("No issue selected").align(Align::center()));
                                 left_side.add_child(TextView::new("No issues available").align(Align::center()));
                             }
-
-                            view.add_child(left_side.scrollable());
+                            view.add_child(left_side.max_width(50).scrollable());
                             view.add_child(TextView::new(" "));
                             view.add_child(right_side.with_name("right_side").full_screen().scrollable());
 
@@ -354,6 +384,7 @@ impl UI {
 
         right_side.add_child(label_view);
         right_side.add_child(state_view);
+        right_side.add_child(TextView::new(format!("\nPost by: {}", issue_data.author.login)).style(Style::from(Effect::Underline)));
         right_side.add_child(TextView::new("\nBody:").style(Style::from(Effect::Underline).combine(ColorStyle::secondary())));
         right_side.add_child(TextView::new(if issue_data.body.trim().is_empty() { "<No body>" } else { &issue_data.body }));
         right_side.add_child(TextView::new("\nComments:").style(Style::from(Effect::Underline).combine(ColorStyle::secondary())));
